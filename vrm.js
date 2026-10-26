@@ -904,8 +904,13 @@ async function audioTalk(blob, character) {
     let lastUpdate = 0;
     const LIPS_SYNC_DELAY = 66;
 
+    // SillyTavern calls this before it sets the audio source and starts playing,
+    // so until playback starts, a paused audio element means "not started yet".
+    let started = false;
+
     function endTalk() {
-        source.stop(0);
+        if (started)
+            source.stop(0);
         source.disconnect();
         analyser.disconnect();
         javascriptNode.disconnect();
@@ -913,11 +918,16 @@ async function audioTalk(blob, character) {
             current_avatars[character]["vrm"].expressionManager.setValue("aa", 0);
 
         audio.removeEventListener("ended", endTalk);
+        if (audioContext.state !== "closed")
+            audioContext.close();
         //javascriptNode.removeEventListener("onaudioprocess", onAudioProcess);
     }
 
     var audio = document.getElementById("tts_audio");
     function startTalk() {
+        if (started)
+            return;
+        started = true;
         source.start(0);
         audio.removeEventListener("onplay", startTalk);
         //javascriptNode.removeEventListener("onaudioprocess", onAudioProcess);
@@ -926,6 +936,10 @@ async function audioTalk(blob, character) {
     audio.onended = endTalk;
 
     function onAudioProcess() {
+        // Waiting for playback to start
+        if (!started && job_id == tts_lips_sync_job_id)
+            return;
+
         if(job_id != tts_lips_sync_job_id || audio.paused) {
             console.debug(DEBUG_PREFIX,"TTS lip sync job",job_id,"terminated")
             endTalk();
